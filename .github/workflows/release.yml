@@ -36,7 +36,7 @@ jobs:
     runs-on: ubuntu-latest
     environment:
       name: pypi
-      url: https://pypi.org/p/llama-index-tools-goodmem
+      url: https://pypi.org/p/llamaindex-goodmem
     permissions:
       id-token: write
     steps:

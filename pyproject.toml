@@ -3,7 +3,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "llama-index-tools-goodmem"
+name = "llamaindex-goodmem"
 version = "0.1.0"
 description = "LlamaIndex tools integration for GoodMem: long-term agent memory."
 authors = [{name = "bashareid"}]

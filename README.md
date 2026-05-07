@@ -5,9 +5,16 @@
 ## Install
 
 ```bash
-pip install -e .          # editable install from this repo
-# or, with dev/test deps:
-pip install -e ".[dev]"
+pip install llamaindex-goodmem
+```
+
+The PyPI distribution is `llamaindex-goodmem`; the Python import path is `llama_index.tools.goodmem` (the `llama_index.*` namespace is shared with the LlamaIndex ecosystem).
+
+For local development from this repo:
+
+```bash
+pip install -e .            # editable install
+pip install -e ".[dev]"     # editable install + test deps
 ```
 
 ## Quick start
