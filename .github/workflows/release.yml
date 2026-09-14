@@ -10,7 +10,11 @@ permissions:
   contents: read
 
 jobs:
+  test:
+    uses: ./.github/workflows/ci.yml
+
   build:
+    needs: test
     name: Build distribution
     runs-on: ubuntu-latest
     steps:

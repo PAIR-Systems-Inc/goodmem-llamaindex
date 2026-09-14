@@ -1,139 +1,68 @@
-# llama-index-tools-goodmem
+# GoodMem for LlamaIndex
 
-[GoodMem](https://goodmem.ai) is a server-side memory layer for AI agents with semantic storage, retrieval, and LLM-powered summarization. This package exposes GoodMem's API as a [LlamaIndex](https://docs.llamaindex.ai) `BaseToolSpec`, so any LlamaIndex agent can store, search, and manage long-term memories.
-
-## Install
+Use [GoodMem](https://goodmem.ai) as a persistent document and retrieval service in LlamaIndex. GoodMem handles chunking, embeddings and optional reranking; the integration returns native `NodeWithScore` objects for query engines and agents.
 
 ```bash
-pip install llamaindex-goodmem
+pip install 'llamaindex-goodmem>=0.2.0'
 ```
 
-The PyPI distribution is `llamaindex-goodmem`; the Python import path is `llama_index.tools.goodmem` (the `llama_index.*` namespace is shared with the LlamaIndex ecosystem).
+The import namespace is `llama_index.tools.goodmem`. Set `GOODMEM_BASE_URL` to your server’s REST root and `GOODMEM_API_KEY` to its API key.
 
-For local development from this repo:
+## Store and retrieve Documents
 
-```bash
-pip install -e .            # editable install
-pip install -e ".[dev]"     # editable install + test deps
-```
-
-## Quick start
+Use an existing GoodMem space configured with an embedder:
 
 ```python
-from llama_index.tools.goodmem import GoodMemToolSpec
+import os
 
-tool_spec = GoodMemToolSpec(
-    api_key="gm_xxx",
-    base_url="https://api.goodmem.ai",
-    verify_ssl=True,    # set False for a self-signed dev cert
+from goodmem import Goodmem
+from llama_index.core.schema import Document
+from llama_index.tools.goodmem import (
+    GoodMemDocumentIngestor,
+    GoodMemRetriever,
+    wait_for_memories,
 )
 
-# Use with a LlamaIndex agent
-tools = tool_spec.to_tool_list()
+with Goodmem(base_url=os.environ["GOODMEM_BASE_URL"],
+             api_key=os.environ["GOODMEM_API_KEY"]) as client:
+    space_id = os.environ["GOODMEM_SPACE_ID"]
+    ids = GoodMemDocumentIngestor(client=client, space_id=space_id).add_documents([
+        Document(text="The returns period is 30 days.",
+                 metadata={"source": "https://example.com/returns"})
+    ])
+    wait_for_memories(client, ids, timeout=120)
+
+    retriever = GoodMemRetriever(client=client, space_ids=[space_id])
+    for result in retriever.retrieve("How long do I have to return an item?"):
+        print(result.score, result.text, result.metadata.get("source"))
 ```
 
-### Constructor parameters
+`add_documents` returns accepted IDs without waiting. Waiting is explicit and checks only those IDs. Ordinary empty searches return immediately.
 
-| Parameter    | Type  | Required | Description                                              |
-|--------------|-------|----------|----------------------------------------------------------|
-| `api_key`    | str   | yes      | GoodMem API key (sent as `X-API-Key`)                    |
-| `base_url`   | str   | yes      | Base URL of your GoodMem server                          |
-| `verify_ssl` | bool  | no       | Verify TLS certificates. Default `True`.                 |
-| `timeout`    | float | no       | Per-request timeout in seconds. Default `120` (LLM-summary retrievals can take tens of seconds). |
+## Connect an agent
 
-## Tools
-
-The tool spec exposes 11 sync/async tool pairs. The names below are the sync entry points; each has an async counterpart prefixed with `a` (e.g. `aretrieve_memories`).
-
-| Tool                 | Purpose                                                                 |
-|----------------------|-------------------------------------------------------------------------|
-| `list_embedders`     | List server-managed embedder models.                                    |
-| `list_spaces`        | List spaces.                                                            |
-| `get_space`          | Fetch one space by ID.                                                  |
-| `create_space`       | Create a new space (or reuse one with the same name).                   |
-| `update_space`       | Rename a space, toggle `publicRead`, or merge/replace labels.           |
-| `delete_space`       | Delete a space (cascades to its memories).                              |
-| `create_memory`      | Store a text or file payload as a memory.                               |
-| `list_memories`      | Paginate memories in a space (with optional status / metadata filters). |
-| `retrieve_memories`  | Semantic search; optional rerank, threshold, LLM summary, chrono-resort. |
-| `get_memory`         | Fetch one memory and (optionally) its original content.                 |
-| `delete_memory`      | Delete a memory.                                                        |
-
-`retrieve_memories` returns `List[llama_index.core.schema.Document]`. Each `Document.text` is a matched chunk; `Document.metadata` includes `chunkId`, `memoryId`, `relevanceScore`, `resultSetId`, `query`, plus `abstractReply` if an `llm_id` was passed.
-
-### Post-processor knobs (`retrieve_memories`)
-
-| Argument                | Type            | Notes                                                          |
-|-------------------------|-----------------|----------------------------------------------------------------|
-| `reranker_id`           | UUID            | Reranks results by direct query–chunk scoring.                 |
-| `llm_id`                | UUID            | Generates an `abstractReply` summary across the result set.    |
-| `relevance_threshold`   | float `0..1`    | Drops results below this score.                                |
-| `llm_temperature`       | float `0..2`    | LLM creativity (sent on the wire as `llm_temp`).               |
-| `chronological_resort`  | bool            | Re-sort the post-processor output by creation time.            |
-
-## Examples
+Use LlamaIndex’s own tool wrapper. Give each collection a useful name and description:
 
 ```python
-# Create a space
-space = tool_spec.create_space(name="my-research", embedder_id="<uuid>")
+from llama_index.core.tools import RetrieverTool
 
-# Add memories
-tool_spec.create_memory(space_id=space["spaceId"], text_content="...")
-tool_spec.create_memory(space_id=space["spaceId"], file_path="/path/to/doc.pdf")
-
-# Search
-docs = tool_spec.retrieve_memories(
-    query="What's the conclusion?",
-    space_ids=[space["spaceId"]],
-    max_results=5,
-    llm_id="<llm-uuid>",
-    llm_temperature=0.2,
+retriever = GoodMemRetriever(space_ids=[space_id])  # uses environment settings
+search = RetrieverTool.from_defaults(
+    retriever,
+    name="returns_policy",
+    description="Search the company's returns and refund policies.",
 )
-for d in docs:
-    print(d.metadata["relevanceScore"], d.text[:120])
-
-# LLM summary (when llm_id is set)
-print(docs[0].metadata["abstractReply"]["text"])
+# Pass search to a workflow-based ReActAgent or FunctionAgent.
 ```
 
-## Use inside a LlamaIndex agent
+The model supplies the query; the application configures spaces, filters and reranking. The same retriever works with `RetrieverQueryEngine` and standard LlamaIndex callbacks.
 
-```python
-from llama_index.tools.goodmem import GoodMemToolSpec
-from llama_index.core.agent import ReActAgent
-from llama_index.llms.openai import OpenAI
+Pass `filters=MetadataFilters(...)` for supported scalar comparisons, membership tests and nested conditions. Pass `reranker_id=...` to rerank on the server without an LLM. Sources and custom metadata stay attached to the retrieved nodes. Framework scores rank higher as more relevant; original scores remain in metadata.
 
-tool_spec = GoodMemToolSpec(api_key="gm_xxx", base_url="https://api.goodmem.ai")
-agent = ReActAgent.from_tools(tool_spec.to_tool_list(), llm=OpenAI(model="gpt-4o-mini"))
+## Async and administrative tools
 
-response = agent.chat("Remember that the project deadline is May 14.")
-```
+`aretrieve` and `aadd_documents` use the SDK’s `AsyncGoodmem` directly. Inject `async_client` to share its connection pool; caller-owned clients remain open.
 
-## Testing
+`GoodMemToolSpec` supplies optional space and memory management tools. Its retrieval result includes chunks, statuses and a `partial` flag. File uploads require an explicitly configured directory. Prefer a scoped retriever tool when an agent only needs search.
 
-### Unit tests (no live server)
-
-```bash
-pip install -e ".[dev]"
-pytest tests/test_tools_goodmem.py -v
-```
-
-### Live e2e smoke test
-
-Exercises every one of the 11 tools and every post-processor knob against a running GoodMem server. Mirrors the §7 smoke-test plan in the GoodMem build guide.
-
-```bash
-GOODMEM_API_KEY=gm_xxx \
-GOODMEM_BASE_URL=https://localhost:8080 \
-GOODMEM_EMBEDDER_ID=<embedder-uuid> \
-GOODMEM_RERANKER_ID=<reranker-uuid> \
-GOODMEM_LLM_ID=<llm-uuid> \
-GOODMEM_VERIFY_SSL=false \
-pytest tests/test_tools_goodmem_e2e.py -v
-```
-
-`GOODMEM_RERANKER_ID` and `GOODMEM_LLM_ID` are optional — the variants that need them are auto-skipped if unset. The full 18-step smoke test passes when all three are configured.
-
-## License
-
-MIT
+See [usage and migration](https://github.com/PAIR-Systems-Inc/goodmem-llamaindex/blob/v0.2.0/docs/usage.md) for async examples, supported filters and diagnostics, and the [changelog](https://github.com/PAIR-Systems-Inc/goodmem-llamaindex/blob/v0.2.0/CHANGELOG.md) for the changes from 0.1. Run `pip install -e '.[dev]'` and `pytest` for the test suite. Live tests are opt-in and clean up their own spaces.

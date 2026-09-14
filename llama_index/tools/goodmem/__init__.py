@@ -1,5 +1,22 @@
-"""GoodMem tool integration for LlamaIndex."""
+"""GoodMem integration for LlamaIndex."""
 
-from llama_index.tools.goodmem.base import GoodMemToolSpec
+from .base import GoodMemToolSpec
+from .ingestion import (
+    GoodMemDocumentIngestor,
+    GoodMemIndexingError,
+    GoodMemIngestionError,
+    await_memories,
+    wait_for_memories,
+)
+from .retriever import GoodMemRetrievalError, GoodMemRetriever
 
-__all__ = ["GoodMemToolSpec"]
+__all__ = [
+    "GoodMemToolSpec",
+    "GoodMemRetriever",
+    "GoodMemRetrievalError",
+    "GoodMemDocumentIngestor",
+    "GoodMemIngestionError",
+    "GoodMemIndexingError",
+    "wait_for_memories",
+    "await_memories",
+]
