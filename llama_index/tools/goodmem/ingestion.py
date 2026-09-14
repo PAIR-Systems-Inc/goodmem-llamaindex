@@ -11,6 +11,7 @@ from llama_index.core.schema import Document, MetadataMode
 from goodmem import AsyncGoodmem, Goodmem, MemoryCreationRequest
 
 from ._connection import Connection
+from ._metadata import document_metadata
 
 
 class GoodMemIngestionError(RuntimeError):
@@ -146,7 +147,7 @@ class GoodMemDocumentIngestor:
                     space_id=self.space_id,
                     original_content=text,
                     content_type="text/plain",
-                    metadata=dict(document.metadata),
+                    metadata=document_metadata(document),
                     original_content_ref=document.metadata.get("source"),
                 )
             )

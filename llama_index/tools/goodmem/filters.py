@@ -60,4 +60,8 @@ def filter_expression(filters: MetadataFilters | MetadataFilter | None) -> str |
     if operator not in operators:
         raise ValueError(f"Unsupported metadata filter operator: {operator}")
     literal, type_ = _literal(filters.value)
-    return f"CAST(val('$.{filters.key}') AS {type_}) {operators[operator]} {literal}"
+    scalar = f"CAST(val('$.{filters.key}') AS {type_})"
+    # Make every leaf two-valued so NOT and NIN also include absent/null fields,
+    # matching LlamaIndex rather than inheriting SQL's UNKNOWN comparison result.
+    guard = "IS NULL OR" if operator == "!=" else "IS NOT NULL AND"
+    return f"({scalar} {guard} {scalar} {operators[operator]} {literal})"

@@ -72,6 +72,8 @@ class Wire:
         response = self.responses.pop(0)
         if isinstance(response, Exception):
             raise response
+        if callable(response):
+            return response(request)
         return response
 
 

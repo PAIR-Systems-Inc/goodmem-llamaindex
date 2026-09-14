@@ -8,11 +8,12 @@ from .ingestion import (
     await_memories,
     wait_for_memories,
 )
-from .retriever import GoodMemRetrievalError, GoodMemRetriever
+from .retriever import GoodMemNodeWithScore, GoodMemRetrievalError, GoodMemRetriever
 
 __all__ = [
     "GoodMemToolSpec",
     "GoodMemRetriever",
+    "GoodMemNodeWithScore",
     "GoodMemRetrievalError",
     "GoodMemDocumentIngestor",
     "GoodMemIngestionError",

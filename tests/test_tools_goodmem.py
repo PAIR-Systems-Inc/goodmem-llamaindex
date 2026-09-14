@@ -46,7 +46,7 @@ async def test_native_retriever_join_scores_and_framework_sources(wire, async_mo
     nodes = await retriever.aretrieve("evidence") if async_mode else retriever.retrieve("evidence")
     assert len(nodes) == 1 and isinstance(nodes[0], NodeWithScore)
     assert nodes[0].score == 0.82
-    assert nodes[0].metadata["_goodmem"]["raw_score"] == -0.82
+    assert nodes[0].raw_score == -0.82
     assert nodes[0].node_id == "chunk-1"
     assert nodes[0].metadata["source"] == "https://example.org/docs"
     assert nodes[0].node.relationships[NodeRelationship.SOURCE].node_id == "memory-1"
@@ -64,7 +64,7 @@ async def test_unknown_status_between_valid_chunks_does_not_abort(wire, async_mo
     retriever = GoodMemRetriever(client=wire.sdk, async_client=wire.asdk, space_ids=["space-1"])
     nodes = await retriever.aretrieve("evidence") if async_mode else retriever.retrieve("evidence")
     assert [n.node_id for n in nodes] == ["chunk-1", "chunk-2"]
-    assert nodes[0].metadata["_goodmem"]["statuses"][0]["code"] == "UNKNOWN"
+    assert nodes[0].statuses[0]["code"] == "UNKNOWN"
 
 
 @pytest.mark.parametrize(
@@ -272,7 +272,8 @@ async def test_document_ingestion_roundtrips_metadata_without_polling(wire, asyn
     ids = await ingestor.aadd_documents([doc]) if async_mode else ingestor.add_documents([doc])
     assert ids == [doc.id_] and len(wire.requests) == 1
     request = json.loads(wire.requests[0].content)["requests"][0]
-    assert request["metadata"] == doc.metadata and request["originalContent"] == "Whole document"
+    assert all(request["metadata"][key] == value for key, value in doc.metadata.items())
+    assert request["originalContent"] == "Whole document"
     assert request["originalContentRef"] == doc.metadata["source"]
 
 

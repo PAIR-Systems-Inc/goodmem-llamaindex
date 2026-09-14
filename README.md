@@ -57,7 +57,7 @@ search = RetrieverTool.from_defaults(
 
 The model supplies the query; the application configures spaces, filters and reranking. The same retriever works with `RetrieverQueryEngine` and standard LlamaIndex callbacks.
 
-Pass `filters=MetadataFilters(...)` for supported scalar comparisons, membership tests and nested conditions. Pass `reranker_id=...` to rerank on the server without an LLM. Sources and custom metadata stay attached to the retrieved nodes. Framework scores rank higher as more relevant; original scores remain in metadata.
+Pass `filters=MetadataFilters(...)` for supported scalar comparisons, membership tests and nested conditions. Pass `reranker_id=...` to rerank on the server without an LLM. Sources, custom metadata and Document metadata exclusions survive storage. Framework scores rank higher as more relevant; `raw_score` preserves the original value.
 
 ## Async and administrative tools
 

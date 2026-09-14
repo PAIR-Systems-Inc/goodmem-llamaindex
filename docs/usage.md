@@ -6,9 +6,11 @@
 
 Use `top_k` for the returned chunk count and `fetch_k` for the candidate count. Reranking defaults to four times `top_k` candidates and returns at most `top_k`. It requires `reranker_id`, not an LLM.
 
-`NodeWithScore.score` follows LlamaIndex's higher-is-better convention for fusion and similarity postprocessors. GoodMem's vector scores are negative inner products, so the retriever negates them. Successful reranker scores are unchanged. `_goodmem.raw_score` preserves the server value, and `_goodmem.score_kind` identifies `negative_inner_product` or `reranker`. Scores are not normalized to 0–1 or calibrated across models; choose similarity thresholds for your model. A known reranker failure raises before fallback vector scores can be treated as reranker scores. Administrative retrieval keeps the original server scores.
+Results are `GoodMemNodeWithScore` objects, a `NodeWithScore` subclass. Their `score` follows LlamaIndex's higher-is-better convention for fusion and similarity postprocessors. GoodMem's vector scores are negative inner products, so the retriever negates them. Successful reranker scores are unchanged. `result.raw_score` preserves the server value, `result.score_kind` identifies `negative_inner_product` or `reranker`, and `result.statuses` holds retrieval diagnostics. These query-dependent fields live on the result wrapper, outside the `TextNode` hash, so multi-query fusion combines repeated chunks correctly. Scores are not normalized to 0–1 or calibrated across models; choose similarity thresholds for your model. A known reranker failure raises before fallback vector scores can be treated as reranker scores. Administrative retrieval keeps the original server scores.
 
-Stored metadata is copied onto each `TextNode`. A missing `source` falls back to the original content reference when available. `_goodmem` contains server IDs, original memory/chunk metadata maps and retrieval statuses. This namespace is excluded from LLM context. Original maps preserve collisions rather than losing user fields. A SOURCE relationship points to the GoodMem memory; the node ID is the chunk ID.
+Stored metadata is copied onto each `TextNode`. A missing `source` falls back to the original content reference when available. `_goodmem` contains server IDs and original memory/chunk metadata maps. This namespace is excluded from LLM context. Original maps preserve collisions rather than losing user fields. A SOURCE relationship points to the GoodMem memory; the node ID is the chunk ID.
+
+Document ingestion persists `excluded_llm_metadata_keys` and `excluded_embed_metadata_keys` under the reserved `_llamaindex_goodmem` metadata key. Retrieval restores them and hides integration metadata from LLM/embedding content. The fields remain available programmatically; exclusions control formatting, not server access. Existing memories without these settings have no original exclusions to restore. The ingestor rejects a user field with the reserved name rather than overwriting it.
 
 Known failure statuses raise `GoodMemRetrievalError`. Unknown codes are exposed as `UNKNOWN` and do not abort retrieval. The administrative tool retains chunks and sets `partial=true` for non-informational diagnostics. Consumers should inspect `statuses` when partial is true. The SDK owns stream parsing, HTTP errors and unknown-code deserialization.
 
@@ -25,6 +27,8 @@ retriever = GoodMemRetriever(space_ids=[space_id], filters=filters)
 ```
 
 Supported operators: `==`, `!=`, `>`, `>=`, `<`, `<=`, `in`, `nin`. Supported conditions: nested AND, OR and single-child NOT. Keys are simple top-level field names; values are strings or finite numbers. Unsupported operators raise before a request. An empty filter applies no constraint. Values are escaped for the server’s expression grammar.
+
+Missing and null fields follow LlamaIndex's matching behavior: `!=`, `nin` and negated equality include them; positive comparisons do not. Translation uses explicit null checks so SQL's three-valued logic cannot silently change negated filter results.
 
 For other paths and operations, pass an application-owned native GoodMem expression with `filter=...`. When both are supplied, they are combined with AND. Do not build raw expressions by concatenating untrusted input.
 

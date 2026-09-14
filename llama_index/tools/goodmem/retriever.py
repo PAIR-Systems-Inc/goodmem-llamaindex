@@ -1,7 +1,7 @@
 """LlamaIndex retrieval with server-side embeddings, filters and reranking."""
 
 from collections.abc import Iterable
-from typing import Any
+from typing import Any, Literal
 
 from llama_index.core.callbacks import CallbackManager
 from llama_index.core.retrievers import BaseRetriever
@@ -13,11 +13,13 @@ from llama_index.core.schema import (
     TextNode,
 )
 from llama_index.core.vector_stores.types import MetadataFilters
+from pydantic import Field
 
 from goodmem.models.retrieve_memory_event import RetrieveMemoryEvent
 from goodmem.models.space_key import SpaceKey
 
 from ._connection import Connection
+from ._metadata import _DOCUMENT_METADATA, stored_metadata
 from .filters import filter_expression
 
 # Only failures whose meaning this integration understands can abort retrieval.
@@ -56,6 +58,19 @@ class GoodMemRetrievalError(RuntimeError):
     def __init__(self, statuses):
         self.statuses = statuses
         super().__init__("; ".join(f"{s['code']}: {s['message']}" for s in statuses))
+
+
+class GoodMemNodeWithScore(NodeWithScore):
+    """A native scored node with retrieval diagnostics outside its content identity.
+
+    LlamaIndex hashes TextNode metadata for fusion and deduplication. Query-dependent
+    raw scores and statuses belong on this result wrapper, never on the TextNode.
+    """
+
+    node: TextNode
+    raw_score: float
+    score_kind: Literal["negative_inner_product", "reranker"] = "negative_inner_product"
+    statuses: list[dict[str, Any]] = Field(default_factory=list)
 
 
 def informational(status):
@@ -104,7 +119,7 @@ def retrieval_result(
             continue
         seen.add(chunk.chunk_id)
         memory = memories.get(chunk.memory_id)
-        memory_metadata = dict(memory.metadata or {}) if memory else {}
+        memory_metadata, exclusions = stored_metadata(memory.metadata if memory else None)
         chunk_metadata = dict(getattr(chunk, "metadata", None) or {})
         metadata = memory_metadata | chunk_metadata
         if memory and memory.original_content_ref:
@@ -116,16 +131,16 @@ def retrieval_result(
             "memory_metadata": memory_metadata,
             "chunk_metadata": chunk_metadata,
         }
-        if statuses:
-            metadata["_goodmem"]["statuses"] = statuses
         nodes.append(
-            NodeWithScore(
+            GoodMemNodeWithScore(
                 node=TextNode(
                     id_=chunk.chunk_id,
                     text=chunk.chunk_text,
                     metadata=metadata,
-                    excluded_llm_metadata_keys=["_goodmem"],
-                    excluded_embed_metadata_keys=list(metadata),
+                    excluded_llm_metadata_keys=["_goodmem", _DOCUMENT_METADATA]
+                    + exclusions["excluded_llm_metadata_keys"],
+                    excluded_embed_metadata_keys=["_goodmem", _DOCUMENT_METADATA]
+                    + exclusions["excluded_embed_metadata_keys"],
                     relationships={
                         NodeRelationship.SOURCE: RelatedNodeInfo(
                             node_id=chunk.memory_id, metadata=memory_metadata
@@ -133,6 +148,8 @@ def retrieval_result(
                     },
                 ),
                 score=hit.relevance_score,
+                raw_score=hit.relevance_score,
+                statuses=statuses,
             )
         )
     abstract = next(
@@ -155,7 +172,7 @@ class GoodMemRetriever(BaseRetriever):
     """Retrieve NodeWithScore objects through the official sync/async SDK.
 
     Scores follow LlamaIndex's higher-is-better convention. Raw server scores
-    and their kind remain in the node's _goodmem metadata.
+    and their kind remain on the GoodMemNodeWithScore wrapper, outside node identity.
 
     Args:
         space_ids: Application-configured spaces to search.
@@ -212,13 +229,9 @@ class GoodMemRetriever(BaseRetriever):
         """Adapt vector scores for LlamaIndex without changing reranker scores."""
         nodes = retrieval_result(events, strict=True)["nodes"][: self.top_k]
         for node in nodes:
-            raw_score = node.score
-            node.metadata["_goodmem"].update(
-                raw_score=raw_score,
-                score_kind="reranker" if self.reranker_id else "negative_inner_product",
-            )
-            if not self.reranker_id and raw_score is not None:
-                node.score = -raw_score
+            node.score_kind = "reranker" if self.reranker_id else "negative_inner_product"
+            if not self.reranker_id:
+                node.score = -node.raw_score
         return nodes
 
     def _retrieve(self, query_bundle: QueryBundle) -> list[NodeWithScore]:

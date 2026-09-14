@@ -9,6 +9,7 @@ from goodmem.errors import ConflictError
 from llama_index.core.schema import Document
 from llama_index.core.tools import RetrieverTool
 from llama_index.core.vector_stores.types import MetadataFilter, MetadataFilters
+from llama_index.core.vector_stores.utils import build_metadata_filter_fn
 
 from llama_index.tools.goodmem import (
     GoodMemDocumentIngestor,
@@ -18,6 +19,8 @@ from llama_index.tools.goodmem import (
     await_memories,
     wait_for_memories,
 )
+
+from .test_filter_semantics import FILTERS
 
 pytestmark = pytest.mark.skipif(
     not (
@@ -97,7 +100,7 @@ async def test_live_async_documents_and_native_metadata_filters(live):
         result = await tool.acall(input="project deployment")
         assert result.raw_output
         assert {n.metadata["tenant"] for n in result.raw_output} == {value}
-        assert all(n.score == -n.metadata["_goodmem"]["raw_score"] for n in result.raw_output)
+        assert all(n.score == -n.raw_score for n in result.raw_output)
     for operator, expected in [("in", {0, 2}), ("nin", {1, 3, 4})]:
         nodes = await GoodMemRetriever(
             async_client=client,
@@ -126,8 +129,8 @@ def test_live_reranking_and_partial_failures(live):
             client=client, space_ids=[space.space_id], reranker_id=reranker
         ).retrieve("What is StateGraph?")
         assert nodes and nodes[0].metadata["source"] == "https://example.org/graph"
-        assert nodes[0].score == nodes[0].metadata["_goodmem"]["raw_score"]
-        assert nodes[0].metadata["_goodmem"]["score_kind"] == "reranker"
+        assert nodes[0].score == nodes[0].raw_score
+        assert nodes[0].score_kind == "reranker"
     invalid = str(uuid.uuid4())
     result = GoodMemToolSpec(client=client).retrieve_memories(
         "StateGraph", [space.space_id], reranker_id=invalid
@@ -137,3 +140,38 @@ def test_live_reranking_and_partial_failures(live):
         GoodMemRetriever(client=client, space_ids=[space.space_id], reranker_id=invalid).retrieve(
             "StateGraph"
         )
+
+
+async def test_live_exclusions_and_null_filter_semantics(live):
+    _, client, space = live
+    rows = [
+        {},
+        {"deleted": None, "rank": None},
+        {"deleted": "yes", "rank": 1},
+        {"deleted": "no", "rank": 0},
+        {"rank": 2},
+    ]
+    documents = [
+        Document(
+            text="The project deployment checklist covers routing and recovery.",
+            metadata=row | {"case": index, "internal_note": "HIDDEN_FROM_LLM"},
+            excluded_llm_metadata_keys=["internal_note"],
+        )
+        for index, row in enumerate(rows)
+    ]
+    ids = await GoodMemDocumentIngestor(
+        async_client=client, space_id=space.space_id
+    ).aadd_documents(documents)
+    await await_memories(client, ids, 120)
+    metadata = {str(i): doc.metadata for i, doc in enumerate(documents)}
+    for filters in FILTERS:
+        expected_fn = build_metadata_filter_fn(metadata.__getitem__, filters)
+        expected = {i for i in range(len(rows)) if expected_fn(str(i))}
+        tool = RetrieverTool.from_defaults(
+            GoodMemRetriever(
+                async_client=client, space_ids=[space.space_id], filters=filters, top_k=10
+            )
+        )
+        result = await tool.acall(input="project deployment")
+        assert {node.metadata["case"] for node in result.raw_output} == expected, filters
+        assert "HIDDEN_FROM_LLM" not in result.content and "internal_note" not in result.content
