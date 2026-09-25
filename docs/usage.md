@@ -60,6 +60,10 @@ Document UUIDs become memory IDs. Non-UUID Document IDs map deterministically wi
 
 If that tool's wait fails, it returns an accepted receipt with `memory_id`, `space_id`, `accepted=true`, `indexing.status="unconfirmed"`, the waiting error and recovery guidance. This is also what an agent sees. Call `get_memory` with the accepted ID to check its current state; do not upload again. The receipt omits the creation response's stale `processing_status`. A successful wait returns `processing_status="COMPLETED"`; `wait=False` returns the creation response immediately. Initial creation errors still raise, and the explicit wait helpers retain their exception-based API.
 
+## Resource IDs
+
+Space, memory, embedder, reranker and LLM IDs must be UUIDs in the standard 8-4-4-4-12 hexadecimal form. This applies to tool arguments, `GoodMemRetriever(space_ids=..., reranker_id=...)`, `GoodMemDocumentIngestor(space_id=...)` and the IDs passed to `wait_for_memories`/`await_memories`. Uppercase UUIDs are accepted and sent in lowercase. Anything else, including surrounding whitespace, raises `ValueError` naming the argument before any request is sent; an agent receives it as a tool error. The official SDK places IDs in URL paths without escaping them, so without this check a value such as `../spaces/<id>` passed as a memory ID would delete a space. Tool schemas also mark these arguments with the JSON-schema `uuid` format.
+
 ## Administrative changes from 0.1
 
 Use SDK objects directly for advanced server configuration. `GoodMemToolSpec` retains eleven basic operations, plus an optional file-upload tool:

@@ -11,6 +11,8 @@ from llama_index.tools.goodmem import (
     _connection,
 )
 
+from .conftest import SPACE_ID
+
 
 @pytest.mark.parametrize("injected_async", [False, True])
 @pytest.mark.parametrize("operation", ["retrieve", "ingest", "create_memory"])
@@ -31,10 +33,10 @@ async def test_injected_client_blocks_other_mode_before_http(
     if explicit_config:
         options.update(base_url="https://explicit-server.test", api_key="explicit-credential")
     if operation == "retrieve":
-        obj = GoodMemRetriever(**options, space_ids=["space-1"])
+        obj = GoodMemRetriever(**options, space_ids=[SPACE_ID])
         sync_call, async_call, args = obj.retrieve, obj.aretrieve, ("query",)
     elif operation == "ingest":
-        obj = GoodMemDocumentIngestor(**options, space_id="space-1")
+        obj = GoodMemDocumentIngestor(**options, space_id=SPACE_ID)
         sync_call, async_call, args = (
             obj.add_documents,
             obj.aadd_documents,
@@ -42,7 +44,7 @@ async def test_injected_client_blocks_other_mode_before_http(
         )
     else:
         obj = GoodMemToolSpec(**options)
-        sync_call, async_call, args = obj.create_memory, obj.acreate_memory, ("space-1", "note")
+        sync_call, async_call, args = obj.create_memory, obj.acreate_memory, (SPACE_ID, "note")
     missing = "client" if injected_async else "async_client"
     with pytest.raises(ValueError, match=f"Pass {missing} "):
         if injected_async:

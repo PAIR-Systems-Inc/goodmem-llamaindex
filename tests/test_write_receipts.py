@@ -9,7 +9,7 @@ from llama_index.core.workflow import Context
 
 from llama_index.tools.goodmem import GoodMemToolSpec
 
-from .conftest import MEMORY
+from .conftest import MEMORY, MEMORY_ID, SPACE_ID
 
 
 def indexed_response(status):
@@ -36,11 +36,11 @@ async def test_accepted_id_survives_wait_failures(wire, async_mode, failure):
     )
     spec = GoodMemToolSpec(client=wire.sdk, async_client=wire.asdk, indexing_timeout=0)
     result = (
-        await spec.acreate_memory("space-1", "note")
+        await spec.acreate_memory(SPACE_ID, "note")
         if async_mode
-        else spec.create_memory("space-1", "note")
+        else spec.create_memory(SPACE_ID, "note")
     )
-    assert result["memory_id"] == "memory-1" and result["accepted"]
+    assert result["memory_id"] == MEMORY_ID and result["accepted"]
     assert result["indexing"]["status"] == "unconfirmed" and result["indexing"]["error"]
     assert "get_memory" in result["next_step"] and "do not upload" in result["next_step"]
     # The creation response's PENDING status is stale after a failed wait.
@@ -61,10 +61,10 @@ async def test_agent_can_recover_accepted_write_without_creating_a_duplicate(wir
     agent = ReActAgent(llm=MockLLM(), tools=list(tools.values()))
     context = Context(agent)
     receipt = await agent._call_tool(
-        context, tools["create_memory"], {"space_id": "space-1", "text_content": "note"}
+        context, tools["create_memory"], {"space_id": SPACE_ID, "text_content": "note"}
     )
     assert not receipt.is_error
-    assert "memory-1" in receipt.content and "unconfirmed" in receipt.content
+    assert MEMORY_ID in receipt.content and "unconfirmed" in receipt.content
     assert "get_memory" in receipt.content and "do not upload" in receipt.content
     status = await agent._call_tool(
         context,
@@ -84,9 +84,9 @@ async def test_initial_write_failure_still_raises(wire, async_mode):
     spec = GoodMemToolSpec(client=wire.sdk, async_client=wire.asdk)
     with pytest.raises(AuthenticationError):
         if async_mode:
-            await spec.acreate_memory("space-1", "note")
+            await spec.acreate_memory(SPACE_ID, "note")
         else:
-            spec.create_memory("space-1", "note")
+            spec.create_memory(SPACE_ID, "note")
     assert len(wire.requests) == 1
 
 
@@ -98,10 +98,10 @@ async def test_create_memory_retains_explicit_wait_behavior(wire, async_mode, wa
         wire.responses.append(indexed_response("COMPLETED"))
     spec = GoodMemToolSpec(client=wire.sdk, async_client=wire.asdk)
     result = (
-        await spec.acreate_memory("space-1", "note", wait=wait)
+        await spec.acreate_memory(SPACE_ID, "note", wait=wait)
         if async_mode
-        else spec.create_memory("space-1", "note", wait=wait)
+        else spec.create_memory(SPACE_ID, "note", wait=wait)
     )
-    assert result["memory_id"] == "memory-1"
+    assert result["memory_id"] == MEMORY_ID
     assert result["processing_status"] == ("COMPLETED" if wait else "PENDING")
     assert len(wire.requests) == (2 if wait else 1)

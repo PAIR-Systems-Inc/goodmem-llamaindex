@@ -14,7 +14,7 @@ from llama_index.tools.goodmem import (
     GoodMemRetriever,
 )
 
-from .conftest import CHUNK, MEMORY, ndjson
+from .conftest import CHUNK, MEMORY, SPACE_ID, ndjson
 
 
 @pytest.mark.parametrize("async_mode", [False, True])
@@ -44,13 +44,13 @@ async def test_document_exclusions_roundtrip_through_http_and_retriever_tool(wir
         return ndjson(chunk, {"memoryDefinition": stored})
 
     wire.responses.extend([store, retrieve])
-    ingestor = GoodMemDocumentIngestor(client=wire.sdk, async_client=wire.asdk, space_id="space-1")
+    ingestor = GoodMemDocumentIngestor(client=wire.sdk, async_client=wire.asdk, space_id=SPACE_ID)
     if async_mode:
         await ingestor.aadd_documents([document])
     else:
         ingestor.add_documents([document])
     tool = RetrieverTool.from_defaults(
-        GoodMemRetriever(client=wire.sdk, async_client=wire.asdk, space_ids=["space-1"])
+        GoodMemRetriever(client=wire.sdk, async_client=wire.asdk, space_ids=[SPACE_ID])
     )
     result = (
         await tool.acall(input="instructions") if async_mode else tool.call(input="instructions")
@@ -75,7 +75,7 @@ async def test_document_exclusions_roundtrip_through_http_and_retriever_tool(wir
 def test_document_reserved_key_is_rejected_without_overwriting_data(wire):
     document = Document(text="note", metadata={"_llamaindex_goodmem": "user value"})
     with pytest.raises(ValueError, match="reserved"):
-        GoodMemDocumentIngestor(client=wire.sdk, space_id="space-1").add_documents([document])
+        GoodMemDocumentIngestor(client=wire.sdk, space_id=SPACE_ID).add_documents([document])
     assert not wire.requests
     assert document.metadata["_llamaindex_goodmem"] == "user value"
 
@@ -85,6 +85,6 @@ def test_malformed_exclusions_fail_before_rendering_metadata(wire, options):
     memory = copy.deepcopy(MEMORY)
     memory["metadata"].update(internal_note="HIDDEN", _llamaindex_goodmem=options)
     wire.responses.append(ndjson(CHUNK, {"memoryDefinition": memory}))
-    tool = RetrieverTool.from_defaults(GoodMemRetriever(client=wire.sdk, space_ids=["space-1"]))
+    tool = RetrieverTool.from_defaults(GoodMemRetriever(client=wire.sdk, space_ids=[SPACE_ID]))
     with pytest.raises(ValueError, match="Invalid"):
         tool.call(input="note")
