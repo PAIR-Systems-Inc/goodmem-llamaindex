@@ -8,6 +8,7 @@ Security fix: IDs can no longer reach a different resource through the URL path.
 - Apply the same check to IDs sent in request bodies: `create_space`, `create_memory`, `upload_memory`, `retrieve_memories`, `GoodMemRetriever`, `GoodMemDocumentIngestor`, `wait_for_memories` and `await_memories`. An empty `reranker_id` or `llm_id` is now refused instead of being ignored; pass `None` to omit it.
 - Normalize accepted UUIDs to lowercase. A space ID configured in uppercase now derives the same memory IDs for non-UUID Document IDs as its lowercase form, and waiting on uppercase memory IDs matches the server's lowercase results.
 - Mark ID arguments in agent tool schemas with the JSON-schema `uuid` format.
+- Make the README's agent example runnable on its own: it now imports `GoodMemRetriever` and reads `GOODMEM_SPACE_ID` instead of relying on names from the previous example, and every README Python block is executed by the test suite against a local server. The README's development commands now include CI's `ruff check` and `ruff format --check` gates.
 
 ## 0.2.0 — 2026-09-14
 
