@@ -9,7 +9,7 @@ from llama_index.core.postprocessor import SimilarityPostprocessor
 from llama_index.core.retrievers import QueryFusionRetriever
 from llama_index.core.retrievers.fusion_retriever import FUSION_MODES
 
-from llama_index.tools.goodmem import GoodMemRetrievalError, GoodMemRetriever, GoodMemToolSpec
+from llama_index.tools.goodmem import GoodMemRetriever, GoodMemToolSpec
 
 from .conftest import CHUNK, MEMORY, RERANKER_ID, SPACE_ID, ndjson
 
@@ -69,19 +69,23 @@ def test_default_similarity_postprocessor_accepts_positive_vector_similarity(wir
     ]
 
 
-def test_failed_reranking_raises_before_interpreting_fallback_as_reranker_scores(wire):
+def test_failed_reranking_returns_fallback_hits_as_vector_scores(wire):
+    # The failure arrives after the hits; the score kind is decided on the whole stream.
     failure = {"status": {"code": "RERANKING_FAILED", "message": "Using vector results"}}
     wire.responses.append(hits([-0.9, -0.2], failure))
-    with pytest.raises(GoodMemRetrievalError, match="RERANKING_FAILED"):
-        GoodMemRetriever(client=wire.sdk, space_ids=[SPACE_ID], reranker_id=RERANKER_ID).retrieve(
-            "query"
-        )
-    # Administrative retrieval keeps server scores and partial results as documented.
+    nodes = GoodMemRetriever(
+        client=wire.sdk, space_ids=[SPACE_ID], reranker_id=RERANKER_ID
+    ).retrieve("query")
+    assert [node.score for node in nodes] == [0.9, 0.2]
+    assert [node.raw_score for node in nodes] == [-0.9, -0.2]
+    assert {node.score_kind for node in nodes} == {"negative_inner_product"}
+    assert all(node.partial for node in nodes)
+    # Administrative retrieval keeps server scores and names their kind.
     wire.responses.append(hits([-0.9, -0.2], failure))
     result = GoodMemToolSpec(client=wire.sdk).retrieve_memories(
         "query", [SPACE_ID], reranker_id=RERANKER_ID
     )
-    assert result["partial"]
+    assert result["partial"] and result["score_kind"] == "negative_inner_product"
     assert [chunk["score"] for chunk in result["chunks"]] == [-0.9, -0.2]
 
 

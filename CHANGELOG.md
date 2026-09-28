@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.2.2 — 2026-09-28
+
+Retrieval fix: a failing reranker no longer costs the results the server returned.
+
+- `GoodMemRetriever` no longer raises on statuses the server reports. When a configured reranker fails, GoodMem reports `NOT_FOUND` naming the reranker and `RERANKING_FAILED` and still returns its vector-search hits; 0.2.1 raised `GoodMemRetrievalError` and discarded them. They are now returned from `retrieve` and `aretrieve`, and any other reported problem likewise keeps the hits.
+- Decide the score kind from the response, not from `reranker_id`: scores are reranker scores only if a reranker was requested and the server reported neither `RERANKING_FAILED` nor a `NOT_FOUND` naming the reranker, checked after the whole stream is read. Fallback hits are negated like any vector score and marked `negative_inner_product`, so they rank correctly and survive a `SimilarityPostprocessor` cutoff. An unrelated status leaves reranker scores unchanged.
+- Add `GoodMemNodeWithScore.partial`, true when the server reported any non-informational status; the statuses remain on `statuses`. The retriever logs reported problems at WARNING, and a problem with no hits also emits a `UserWarning` naming the statuses, because a bare list has no flag.
+- Treat `FEATURE_DISABLED` and `LLM_CAPABILITY_INFERRED` as informational by code alone, as the GoodMem retrieval status contract specifies. `FEATURE_DISABLED` was previously informational only for summarization without `llm_id`; other variants set `partial`.
+- Add `score_kind` to `retrieve_memories` results, so an agent can tell raw reranker scores (higher is better) from raw vector scores (lower is better), including when reranking failed. Chunk scores are unchanged.
+- `GoodMemRetrievalError` remains importable for compatibility but is no longer raised.
+
 ## 0.2.1 — 2026-09-25
 
 Security fix: IDs can no longer reach a different resource through the URL path.

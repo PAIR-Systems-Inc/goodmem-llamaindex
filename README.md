@@ -3,7 +3,7 @@
 Use [GoodMem](https://goodmem.ai) as a persistent document and retrieval service in LlamaIndex. GoodMem handles chunking, embeddings and optional reranking; the integration returns native `NodeWithScore` objects for query engines and agents.
 
 ```bash
-pip install 'llamaindex-goodmem>=0.2.1'
+pip install 'llamaindex-goodmem>=0.2.2'
 ```
 
 The import namespace is `llama_index.tools.goodmem`. Set `GOODMEM_BASE_URL` to your server’s REST root and `GOODMEM_API_KEY` to its API key.
@@ -63,12 +63,14 @@ The model supplies the query; the application configures spaces, filters and rer
 
 Pass `filters=MetadataFilters(...)` for supported scalar comparisons, membership tests and nested conditions. Pass `reranker_id=...` to rerank on the server without an LLM. Sources, custom metadata and Document metadata exclusions survive storage. Framework scores rank higher as more relevant; `raw_score` preserves the original value.
 
+Retrieval does not raise on problems the server reports in its results; it returns what the server sent. HTTP errors, such as an unknown space, still raise the SDK's exception. If a configured reranker fails (for example, its ID does not exist), GoodMem reports `NOT_FOUND` and `RERANKING_FAILED` and still returns the vector-search hits. The retriever returns those hits as vector scores, negated like any vector score, with `score_kind="negative_inner_product"`, `partial=True` and the server's `statuses` on each result, and logs a WARNING. A reported problem with no hits returns an empty list, a `UserWarning` and a WARNING log line naming the statuses.
+
 ## Async and administrative tools
 
 `aretrieve` and `aadd_documents` use the SDK’s `AsyncGoodmem` directly. Inject `async_client` to share its connection pool; caller-owned clients remain open.
 
-`GoodMemToolSpec` supplies optional space and memory management tools. Its retrieval result includes chunks, statuses and a `partial` flag. File uploads require an explicitly configured directory. Prefer a scoped retriever tool when an agent only needs search.
+`GoodMemToolSpec` supplies optional space and memory management tools. Its retrieval result includes chunks with the server's raw scores, `statuses`, a `partial` flag and `score_kind` (`reranker`, or `negative_inner_product` for vector scores, including when reranking failed). File uploads require an explicitly configured directory. Prefer a scoped retriever tool when an agent only needs search.
 
 Every GoodMem ID you or a model pass in (space, memory, embedder, reranker or LLM) must be a UUID. Anything else raises `ValueError` before a request is sent, because the SDK puts IDs into URL paths, where a value such as `../spaces/<id>` would reach a different resource.
 
-See [usage and migration](https://github.com/PAIR-Systems-Inc/goodmem-llamaindex/blob/v0.2.1/docs/usage.md) for async examples, supported filters and diagnostics, and the [changelog](https://github.com/PAIR-Systems-Inc/goodmem-llamaindex/blob/v0.2.1/CHANGELOG.md) for the changes from 0.1. Run `pip install -e '.[dev]'`, then `pytest`, `ruff check llama_index tests` and `ruff format --check llama_index tests`, as CI does. Live tests are opt-in and clean up their own spaces.
+See [usage and migration](https://github.com/PAIR-Systems-Inc/goodmem-llamaindex/blob/v0.2.2/docs/usage.md) for async examples, supported filters and diagnostics, and the [changelog](https://github.com/PAIR-Systems-Inc/goodmem-llamaindex/blob/v0.2.2/CHANGELOG.md) for the changes from 0.1. Run `pip install -e '.[dev]'`, then `pytest`, `ruff check llama_index tests` and `ruff format --check llama_index tests`, as CI does. Live tests are opt-in and clean up their own spaces.

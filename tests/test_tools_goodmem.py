@@ -18,7 +18,6 @@ from llama_index.tools.goodmem import (
     GoodMemDocumentIngestor,
     GoodMemIndexingError,
     GoodMemIngestionError,
-    GoodMemRetrievalError,
     GoodMemRetriever,
     GoodMemToolSpec,
     await_memories,
@@ -81,11 +80,12 @@ async def test_unknown_status_between_valid_chunks_does_not_abort(wire, async_mo
 @pytest.mark.parametrize(
     "code", ["RERANKING_FAILED", "VECTOR_SEARCH_PARTIAL", "SUMMARIZATION_FAILED"]
 )
-def test_known_failure_raises_for_retriever_but_tool_retains_chunks(wire, code):
+def test_known_failure_keeps_chunks_for_retriever_and_tool(wire, code):
     failure = {"status": {"code": code, "message": "A requested stage failed"}}
     wire.responses.extend([events(failure), events(failure)])
-    with pytest.raises(GoodMemRetrievalError, match=code):
-        GoodMemRetriever(client=wire.sdk, space_ids=[SPACE_ID]).retrieve("evidence")
+    nodes = GoodMemRetriever(client=wire.sdk, space_ids=[SPACE_ID]).retrieve("evidence")
+    assert nodes[0].text == "Retrieved evidence" and nodes[0].partial is True
+    assert nodes[0].statuses[0]["code"] == code
     result = GoodMemToolSpec(client=wire.sdk).retrieve_memories("evidence", [SPACE_ID])
     assert result["partial"] is True and result["chunks"][0]["text"] == "Retrieved evidence"
     assert result["statuses"][0]["code"] == code
@@ -482,6 +482,6 @@ def test_a_newer_sdk_recognizing_a_new_notice_does_not_make_it_fatal():
         RetrieveMemoryEvent(status=status),
         RetrieveMemoryEvent.model_validate({"memoryDefinition": MEMORY}),
     ]
-    result = retrieval_result(events_, strict=True)
+    result = retrieval_result(events_)
     assert result["nodes"][0].text == "Retrieved evidence"
     assert result["partial"] and result["statuses"][0]["code"] == "FUTURE_INFORMATION"

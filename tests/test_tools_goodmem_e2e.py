@@ -13,7 +13,6 @@ from llama_index.core.vector_stores.utils import build_metadata_filter_fn
 
 from llama_index.tools.goodmem import (
     GoodMemDocumentIngestor,
-    GoodMemRetrievalError,
     GoodMemRetriever,
     GoodMemToolSpec,
     await_memories,
@@ -130,16 +129,21 @@ def test_live_reranking_and_partial_failures(live):
         ).retrieve("What is StateGraph?")
         assert nodes and nodes[0].metadata["source"] == "https://example.org/graph"
         assert nodes[0].score == nodes[0].raw_score
-        assert nodes[0].score_kind == "reranker"
+        assert nodes[0].score_kind == "reranker" and nodes[0].partial is False
     invalid = str(uuid.uuid4())
     result = GoodMemToolSpec(client=client).retrieve_memories(
         "StateGraph", [space.space_id], reranker_id=invalid
     )
     assert result["partial"] and result["statuses"] and result["chunks"]
-    with pytest.raises(GoodMemRetrievalError):
-        GoodMemRetriever(client=client, space_ids=[space.space_id], reranker_id=invalid).retrieve(
-            "StateGraph"
-        )
+    assert result["score_kind"] == "negative_inner_product"
+    # The server falls back to vector hits; they are returned, not raised on.
+    nodes = GoodMemRetriever(
+        client=client, space_ids=[space.space_id], reranker_id=invalid
+    ).retrieve("StateGraph")
+    assert nodes and nodes[0].metadata["source"] == "https://example.org/graph"
+    assert nodes[0].score == -nodes[0].raw_score > 0
+    assert nodes[0].score_kind == "negative_inner_product" and nodes[0].partial is True
+    assert "RERANKING_FAILED" in {s["code"] for s in nodes[0].statuses}
 
 
 async def test_live_exclusions_and_null_filter_semantics(live):

@@ -1,5 +1,7 @@
 """LlamaIndex retrieval with server-side embeddings, filters and reranking."""
 
+import logging
+import warnings
 from collections.abc import Iterable
 from typing import Any, Literal
 
@@ -23,38 +25,19 @@ from ._ids import require_uuid
 from ._metadata import _DOCUMENT_METADATA, stored_metadata
 from .filters import filter_expression
 
-# Only failures whose meaning this integration understands can abort retrieval.
-# A newer SDK may recognize a new informational code before this package does.
-_KNOWN_FAILURES = frozenset(
-    {
-        "INVALID_ARGUMENT",
-        "NOT_FOUND",
-        "PERMISSION_DENIED",
-        "FAILED_PRECONDITION",
-        "EMBEDDER_FAILED",
-        "EMBEDDER_UNAVAILABLE",
-        "EMBEDDER_TIMEOUT",
-        "VECTOR_SEARCH_FAILED",
-        "VECTOR_SEARCH_PARTIAL",
-        "VECTOR_SEARCH_TIMEOUT",
-        "SPACE_INACCESSIBLE",
-        "SPACE_NOT_FOUND",
-        "SPACE_NO_EMBEDDERS",
-        "CHUNK_NOT_FOUND",
-        "MEMORY_LOAD_FAILED",
-        "MEMORY_CONTENT_UNAVAILABLE",
-        "RERANKING_FAILED",
-        "SUMMARIZATION_FAILED",
-        "SUMMARIZATION_TIMEOUT",
-        "RATE_LIMITED",
-        "RESOURCE_EXHAUSTED",
-        "CONFIGURATION_ERROR",
-    }
-)
+logger = logging.getLogger(__name__)
+
+# Q1 of the GoodMem retrieval status contract: these codes report an optional
+# feature the caller did not configure, never a missing part of the result.
+_NOISE_CODES = frozenset({"LLM_CAPABILITY_INFERRED", "FEATURE_DISABLED"})
 
 
 class GoodMemRetrievalError(RuntimeError):
-    """A known retrieval failure, with the original server diagnostics."""
+    """Retained for compatibility; retrieval no longer raises it.
+
+    Since 0.2.2 a problem reported by the server is returned as a partial result
+    with its statuses: hits the server sent are kept, and an empty result warns.
+    """
 
     def __init__(self, statuses):
         self.statuses = statuses
@@ -65,33 +48,67 @@ class GoodMemNodeWithScore(NodeWithScore):
     """A native scored node with retrieval diagnostics outside its content identity.
 
     LlamaIndex hashes TextNode metadata for fusion and deduplication. Query-dependent
-    raw scores and statuses belong on this result wrapper, never on the TextNode.
+    raw scores, statuses and the partial flag belong on this result wrapper, never
+    on the TextNode.
     """
 
     node: TextNode
     raw_score: float
     score_kind: Literal["negative_inner_product", "reranker"] = "negative_inner_product"
     statuses: list[dict[str, Any]] = Field(default_factory=list)
+    partial: bool = False
 
 
 def informational(status):
-    """Identify notices that do not imply incomplete retrieval."""
-    details = status.details or {}
-    return status.code == "LLM_CAPABILITY_INFERRED" or (
-        status.code == "FEATURE_DISABLED"
-        and details.get("feature") == "summarization"
-        and details.get("required_param") == "llm_id"
+    """Identify notices that do not imply incomplete retrieval, by code alone."""
+    return status.code in _NOISE_CODES
+
+
+def reranking_failed(statuses) -> bool:
+    """Whether the server reported that a requested reranker did not run.
+
+    RERANKING_FAILED says so directly. A NOT_FOUND naming the reranker (server
+    v1.0.320: details {"reranker_id": ...}, "Reranker not found") means the same,
+    even alone. The server then returns the vector-stage hits instead.
+    """
+    for status in statuses:
+        details = status.details or {}
+        if status.code == "RERANKING_FAILED":
+            return True
+        if status.code == "NOT_FOUND" and (
+            "reranker_id" in details
+            or "rerankerId" in details
+            or "reranker" in (status.message or "").lower()
+        ):
+            return True
+    return False
+
+
+def problem_summary(statuses: list[dict[str, Any]]) -> str:
+    """Name the reported problems, leaving out informational notices."""
+    return "; ".join(
+        f"{s['code']}: {s['message']}" if s.get("message") else s["code"]
+        for s in statuses
+        if s["code"] not in _NOISE_CODES
     )
 
 
 def retrieval_result(
-    events: Iterable[RetrieveMemoryEvent], *, strict: bool = False
+    events: Iterable[RetrieveMemoryEvent], *, reranker_requested: bool = False
 ) -> dict[str, Any]:
     """Join complete SDK events, preserving sources and future status codes.
 
+    Never raises on statuses: hits the server returned are always kept, and
+    ``partial`` reports any status that is not informational. Scores are
+    reranker scores only if a reranker was requested and the server did not
+    report that it failed; this is decided after the whole stream is read,
+    because a failure status can follow the hits. Vector scores are negative
+    inner products, so node scores negate them to LlamaIndex's higher-is-better
+    direction; ``raw_score`` keeps the server value.
+
     Returns:
-        Nodes, original statuses, partial flag and optional abstract reply.
-        Unknown codes become UNKNOWN through the Python SDK's None fallback.
+        Nodes, original statuses, partial flag, score kind and optional abstract
+        reply. Unknown codes become UNKNOWN through the Python SDK's None fallback.
     """
     events = list(events)
     statuses = [
@@ -99,14 +116,9 @@ def retrieval_result(
         for e in events
         if e.status
     ]
-    failures = [e.status for e in events if e.status and not informational(e.status)]
-    if strict and any(s.code in _KNOWN_FAILURES for s in failures):
-        raise GoodMemRetrievalError(
-            [
-                s.model_dump(mode="json", exclude_none=True) | {"code": s.code or "UNKNOWN"}
-                for s in failures
-            ]
-        )
+    partial = any(e.status and not informational(e.status) for e in events)
+    reranked = reranker_requested and not reranking_failed([e.status for e in events if e.status])
+    score_kind = "reranker" if reranked else "negative_inner_product"
     memories = {
         e.memory_definition.memory_id: e.memory_definition for e in events if e.memory_definition
     }
@@ -148,9 +160,11 @@ def retrieval_result(
                         )
                     },
                 ),
-                score=hit.relevance_score,
+                score=hit.relevance_score if reranked else -hit.relevance_score,
                 raw_score=hit.relevance_score,
+                score_kind=score_kind,
                 statuses=statuses,
+                partial=partial,
             )
         )
     abstract = next(
@@ -164,7 +178,8 @@ def retrieval_result(
     return {
         "nodes": nodes,
         "statuses": statuses,
-        "partial": bool(failures),
+        "partial": partial,
+        "score_kind": score_kind,
         "abstract_reply": abstract,
     }
 
@@ -172,8 +187,12 @@ def retrieval_result(
 class GoodMemRetriever(BaseRetriever):
     """Retrieve NodeWithScore objects through the official sync/async SDK.
 
-    Scores follow LlamaIndex's higher-is-better convention. Raw server scores
-    and their kind remain on the GoodMemNodeWithScore wrapper, outside node identity.
+    Scores follow LlamaIndex's higher-is-better convention. Raw server scores,
+    their kind, statuses and a partial flag remain on the GoodMemNodeWithScore
+    wrapper, outside node identity. Retrieval does not raise on server statuses:
+    when a configured reranker fails, the server's vector hits are returned as
+    vector scores with partial=True. A reported problem with no hits returns an
+    empty list, a UserWarning and a WARNING log line naming the statuses.
 
     Args:
         space_ids: Application-configured space UUIDs to search.
@@ -229,12 +248,23 @@ class GoodMemRetriever(BaseRetriever):
         return options
 
     def _nodes(self, events):
-        """Adapt vector scores for LlamaIndex without changing reranker scores."""
-        nodes = retrieval_result(events, strict=True)["nodes"][: self.top_k]
-        for node in nodes:
-            node.score_kind = "reranker" if self.reranker_id else "negative_inner_product"
-            if not self.reranker_id:
-                node.score = -node.raw_score
+        """Return the server's hits, reporting problems instead of raising."""
+        result = retrieval_result(events, reranker_requested=bool(self.reranker_id))
+        nodes = result["nodes"][: self.top_k]
+        if result["partial"]:
+            problems = problem_summary(result["statuses"])
+            logger.warning(
+                "GoodMem reported a problem during retrieval (%d result(s) returned): %s",
+                len(nodes),
+                problems,
+            )
+            if not nodes:
+                # A bare list has no slot for the partial flag; make the empty result visible.
+                warnings.warn(
+                    f"GoodMem returned no results and reported a problem: {problems}",
+                    UserWarning,
+                    stacklevel=2,
+                )
         return nodes
 
     def _retrieve(self, query_bundle: QueryBundle) -> list[NodeWithScore]:

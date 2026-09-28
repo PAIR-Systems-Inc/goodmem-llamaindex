@@ -44,13 +44,14 @@ def _content(data, content_type):
     return {"content_notice": "Binary content omitted; use the SDK to download original bytes"}
 
 
-def _compact(events, limit):
-    result = retrieval_result(events)
+def _compact(events, limit, reranker_requested):
+    # Chunk scores stay as the server sent them; score_kind names their scale.
+    result = retrieval_result(events, reranker_requested=reranker_requested)
     result["chunks"] = [
         {
             "text": n.text,
             "source": n.metadata.get("source"),
-            "score": n.score,
+            "score": n.raw_score,
             "memory_id": n.metadata["_goodmem"]["memory_id"],
             "chunk_id": n.node_id,
             "space_id": n.metadata["_goodmem"]["space_id"],
@@ -342,16 +343,20 @@ class GoodMemToolSpec(BaseToolSpec):
         llm_id: UuidStr | None = None,
         filter_expression: str | None = None,
     ) -> dict[str, Any]:
-        """Search once, returning compact chunks, sources, statuses and a partial flag.
+        """Search once, returning compact chunks, sources, statuses, partial and score_kind.
 
         Reranking needs no LLM. partial=true means diagnostics need attention;
         useful chunks are retained even when a post-processing stage fails.
+        Chunk scores are raw: higher is better for score_kind "reranker", lower for
+        "negative_inner_product" (vector search, also used when reranking failed).
         """
         options = self._search_options(
             query, space_ids, max_results, fetch_k, reranker_id, llm_id, filter_expression
         )
         with self._connection.sync() as client:
-            return _compact(client.memories.retrieve(**options), max_results)
+            return _compact(
+                client.memories.retrieve(**options), max_results, "reranker_id" in options
+            )
 
     async def aretrieve_memories(
         self,
@@ -368,7 +373,9 @@ class GoodMemToolSpec(BaseToolSpec):
             query, space_ids, max_results, fetch_k, reranker_id, llm_id, filter_expression
         )
         async with self._connection.async_() as client:
-            return _compact(await client.memories.retrieve(**options), max_results)
+            return _compact(
+                await client.memories.retrieve(**options), max_results, "reranker_id" in options
+            )
 
     def get_memory(self, memory_id: UuidStr, include_content: bool = True) -> dict[str, Any]:
         """Fetch memory metadata and readable original text; retain metadata if content is unavailable."""
