@@ -10,6 +10,7 @@ from llama_index.core.tools.tool_spec.base import BaseToolSpec
 from goodmem.errors import GoodMemError
 
 from ._connection import Connection
+from ._ids import UuidStr, require_uuid
 from .ingestion import GoodMemIndexingError, await_memories, wait_for_memories
 from .retriever import GoodMemRetriever, retrieval_result
 
@@ -63,7 +64,8 @@ class GoodMemToolSpec(BaseToolSpec):
     """Manage spaces and memories with synchronous and native async agent tools.
 
     Prefer GoodMemRetriever with LlamaIndex's RetrieverTool for scoped RAG search.
-    These administrative tools expose resource IDs to the model.
+    These administrative tools expose resource IDs to the model. Every ID must be a
+    UUID and is checked before any request, because the SDK places IDs in URL paths.
 
     Args:
         upload_directory: Optional directory the upload tool may read. Uploads are
@@ -134,25 +136,29 @@ class GoodMemToolSpec(BaseToolSpec):
                 )
             ]
 
-    def get_space(self, space_id: str) -> dict[str, Any]:
+    def get_space(self, space_id: UuidStr) -> dict[str, Any]:
         """Fetch a space's metadata and configuration by UUID."""
+        space_id = require_uuid(space_id, "space_id")
         with self._connection.sync() as client:
             return _dump(client.spaces.get(id=space_id))
 
-    async def aget_space(self, space_id: str) -> dict[str, Any]:
+    async def aget_space(self, space_id: UuidStr) -> dict[str, Any]:
         """Fetch a space asynchronously."""
+        space_id = require_uuid(space_id, "space_id")
         async with self._connection.async_() as client:
             return _dump(await client.spaces.get(id=space_id))
 
-    def create_space(self, name: str, embedder_id: str) -> dict[str, Any]:
+    def create_space(self, name: str, embedder_id: UuidStr) -> dict[str, Any]:
         """Create a new space with server defaults; duplicate names raise a conflict."""
+        embedder_id = require_uuid(embedder_id, "embedder_id")
         with self._connection.sync() as client:
             return _dump(
                 client.spaces.create(name=name, space_embedders=[{"embedder_id": embedder_id}])
             )
 
-    async def acreate_space(self, name: str, embedder_id: str) -> dict[str, Any]:
+    async def acreate_space(self, name: str, embedder_id: UuidStr) -> dict[str, Any]:
         """Create a space asynchronously, using server chunking defaults."""
+        embedder_id = require_uuid(embedder_id, "embedder_id")
         async with self._connection.async_() as client:
             return _dump(
                 await client.spaces.create(
@@ -161,9 +167,10 @@ class GoodMemToolSpec(BaseToolSpec):
             )
 
     def update_space(
-        self, space_id: str, name: str | None = None, labels: dict[str, str] | None = None
+        self, space_id: UuidStr, name: str | None = None, labels: dict[str, str] | None = None
     ) -> dict[str, Any]:
         """Rename a space or replace its labels."""
+        space_id = require_uuid(space_id, "space_id")
         with self._connection.sync() as client:
             return _dump(
                 client.spaces.update(
@@ -177,9 +184,10 @@ class GoodMemToolSpec(BaseToolSpec):
             )
 
     async def aupdate_space(
-        self, space_id: str, name: str | None = None, labels: dict[str, str] | None = None
+        self, space_id: UuidStr, name: str | None = None, labels: dict[str, str] | None = None
     ) -> dict[str, Any]:
         """Update a space asynchronously."""
+        space_id = require_uuid(space_id, "space_id")
         async with self._connection.async_() as client:
             return _dump(
                 await client.spaces.update(
@@ -192,21 +200,23 @@ class GoodMemToolSpec(BaseToolSpec):
                 )
             )
 
-    def delete_space(self, space_id: str) -> dict[str, str]:
+    def delete_space(self, space_id: UuidStr) -> dict[str, str]:
         """Delete a space and all of its memories."""
+        space_id = require_uuid(space_id, "space_id")
         with self._connection.sync() as client:
             client.spaces.delete(id=space_id)
         return {"space_id": space_id}
 
-    async def adelete_space(self, space_id: str) -> dict[str, str]:
+    async def adelete_space(self, space_id: UuidStr) -> dict[str, str]:
         """Delete a space and its memories asynchronously."""
+        space_id = require_uuid(space_id, "space_id")
         async with self._connection.async_() as client:
             await client.spaces.delete(id=space_id)
         return {"space_id": space_id}
 
     def create_memory(
         self,
-        space_id: str,
+        space_id: UuidStr,
         text_content: str,
         metadata: dict[str, Any] | None = None,
         wait: bool = True,
@@ -216,6 +226,7 @@ class GoodMemToolSpec(BaseToolSpec):
         An unconfirmed indexing result means creation succeeded. Use get_memory
         with the returned memory_id to check status without uploading again.
         """
+        space_id = require_uuid(space_id, "space_id")
         with self._connection.sync() as client:
             memory = client.memories.create(
                 space_id=space_id, original_content=text_content, metadata=metadata
@@ -230,12 +241,13 @@ class GoodMemToolSpec(BaseToolSpec):
 
     async def acreate_memory(
         self,
-        space_id: str,
+        space_id: UuidStr,
         text_content: str,
         metadata: dict[str, Any] | None = None,
         wait: bool = True,
     ) -> dict[str, Any]:
         """Store a note asynchronously, retaining its accepted ID if indexing waiting fails."""
+        space_id = require_uuid(space_id, "space_id")
         async with self._connection.async_() as client:
             memory = await client.memories.create(
                 space_id=space_id, original_content=text_content, metadata=metadata
@@ -257,9 +269,10 @@ class GoodMemToolSpec(BaseToolSpec):
         return str(path)
 
     def upload_memory(
-        self, space_id: str, file_path: str, metadata: dict[str, Any] | None = None
+        self, space_id: UuidStr, file_path: str, metadata: dict[str, Any] | None = None
     ) -> dict[str, Any]:
         """Upload a file from the application-approved directory; returns an accepted memory ID."""
+        space_id = require_uuid(space_id, "space_id")
         path = self._upload_path(file_path)
         with self._connection.sync() as client:
             return _dump(
@@ -267,9 +280,10 @@ class GoodMemToolSpec(BaseToolSpec):
             )
 
     async def aupload_memory(
-        self, space_id: str, file_path: str, metadata: dict[str, Any] | None = None
+        self, space_id: UuidStr, file_path: str, metadata: dict[str, Any] | None = None
     ) -> dict[str, Any]:
         """Upload an approved file asynchronously, without waiting for indexing."""
+        space_id = require_uuid(space_id, "space_id")
         path = self._upload_path(file_path)
         async with self._connection.async_() as client:
             return _dump(
@@ -277,9 +291,10 @@ class GoodMemToolSpec(BaseToolSpec):
             )
 
     def list_memories(
-        self, space_id: str, filter_expression: str | None = None, max_items: int = 100
+        self, space_id: UuidStr, filter_expression: str | None = None, max_items: int = 100
     ) -> list[dict[str, Any]]:
         """List memory metadata across pages, optionally using a native GoodMem filter."""
+        space_id = require_uuid(space_id, "space_id")
         with self._connection.sync() as client:
             return [
                 _dump(m)
@@ -289,9 +304,10 @@ class GoodMemToolSpec(BaseToolSpec):
             ]
 
     async def alist_memories(
-        self, space_id: str, filter_expression: str | None = None, max_items: int = 100
+        self, space_id: UuidStr, filter_expression: str | None = None, max_items: int = 100
     ) -> list[dict[str, Any]]:
         """List matching memories asynchronously."""
+        space_id = require_uuid(space_id, "space_id")
         async with self._connection.async_() as client:
             return [
                 _dump(m)
@@ -311,18 +327,19 @@ class GoodMemToolSpec(BaseToolSpec):
             filter=filter_expression,
         )
         options = retriever._request(query)
-        if llm_id:
+        if llm_id is not None:
+            llm_id = require_uuid(llm_id, "llm_id")
             options.update(llm_id=llm_id, max_results=max_results)
         return options
 
     def retrieve_memories(
         self,
         query: str,
-        space_ids: list[str],
+        space_ids: list[UuidStr],
         max_results: int = 5,
         fetch_k: int | None = None,
-        reranker_id: str | None = None,
-        llm_id: str | None = None,
+        reranker_id: UuidStr | None = None,
+        llm_id: UuidStr | None = None,
         filter_expression: str | None = None,
     ) -> dict[str, Any]:
         """Search once, returning compact chunks, sources, statuses and a partial flag.
@@ -339,11 +356,11 @@ class GoodMemToolSpec(BaseToolSpec):
     async def aretrieve_memories(
         self,
         query: str,
-        space_ids: list[str],
+        space_ids: list[UuidStr],
         max_results: int = 5,
         fetch_k: int | None = None,
-        reranker_id: str | None = None,
-        llm_id: str | None = None,
+        reranker_id: UuidStr | None = None,
+        llm_id: UuidStr | None = None,
         filter_expression: str | None = None,
     ) -> dict[str, Any]:
         """Search asynchronously with the same compact diagnostic result."""
@@ -353,8 +370,9 @@ class GoodMemToolSpec(BaseToolSpec):
         async with self._connection.async_() as client:
             return _compact(await client.memories.retrieve(**options), max_results)
 
-    def get_memory(self, memory_id: str, include_content: bool = True) -> dict[str, Any]:
+    def get_memory(self, memory_id: UuidStr, include_content: bool = True) -> dict[str, Any]:
         """Fetch memory metadata and readable original text; retain metadata if content is unavailable."""
+        memory_id = require_uuid(memory_id, "memory_id")
         with self._connection.sync() as client:
             memory = client.memories.get(id=memory_id)
             result = {"memory": _dump(memory)}
@@ -367,8 +385,9 @@ class GoodMemToolSpec(BaseToolSpec):
                     result["content_error"] = str(exc)
             return result
 
-    async def aget_memory(self, memory_id: str, include_content: bool = True) -> dict[str, Any]:
+    async def aget_memory(self, memory_id: UuidStr, include_content: bool = True) -> dict[str, Any]:
         """Fetch memory metadata and readable content asynchronously."""
+        memory_id = require_uuid(memory_id, "memory_id")
         async with self._connection.async_() as client:
             memory = await client.memories.get(id=memory_id)
             result = {"memory": _dump(memory)}
@@ -381,14 +400,16 @@ class GoodMemToolSpec(BaseToolSpec):
                     result["content_error"] = str(exc)
             return result
 
-    def delete_memory(self, memory_id: str) -> dict[str, str]:
+    def delete_memory(self, memory_id: UuidStr) -> dict[str, str]:
         """Delete a memory and its indexed chunks."""
+        memory_id = require_uuid(memory_id, "memory_id")
         with self._connection.sync() as client:
             client.memories.delete(id=memory_id)
         return {"memory_id": memory_id}
 
-    async def adelete_memory(self, memory_id: str) -> dict[str, str]:
+    async def adelete_memory(self, memory_id: UuidStr) -> dict[str, str]:
         """Delete a memory asynchronously."""
+        memory_id = require_uuid(memory_id, "memory_id")
         async with self._connection.async_() as client:
             await client.memories.delete(id=memory_id)
         return {"memory_id": memory_id}

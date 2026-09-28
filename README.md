@@ -3,7 +3,7 @@
 Use [GoodMem](https://goodmem.ai) as a persistent document and retrieval service in LlamaIndex. GoodMem handles chunking, embeddings and optional reranking; the integration returns native `NodeWithScore` objects for query engines and agents.
 
 ```bash
-pip install 'llamaindex-goodmem>=0.2.0'
+pip install 'llamaindex-goodmem>=0.2.1'
 ```
 
 The import namespace is `llama_index.tools.goodmem`. Set `GOODMEM_BASE_URL` to your server’s REST root and `GOODMEM_API_KEY` to its API key.
@@ -44,8 +44,12 @@ with Goodmem(base_url=os.environ["GOODMEM_BASE_URL"],
 Use LlamaIndex’s own tool wrapper. Give each collection a useful name and description:
 
 ```python
-from llama_index.core.tools import RetrieverTool
+import os
 
+from llama_index.core.tools import RetrieverTool
+from llama_index.tools.goodmem import GoodMemRetriever
+
+space_id = os.environ["GOODMEM_SPACE_ID"]
 retriever = GoodMemRetriever(space_ids=[space_id])  # uses environment settings
 search = RetrieverTool.from_defaults(
     retriever,
@@ -65,4 +69,6 @@ Pass `filters=MetadataFilters(...)` for supported scalar comparisons, membership
 
 `GoodMemToolSpec` supplies optional space and memory management tools. Its retrieval result includes chunks, statuses and a `partial` flag. File uploads require an explicitly configured directory. Prefer a scoped retriever tool when an agent only needs search.
 
-See [usage and migration](https://github.com/PAIR-Systems-Inc/goodmem-llamaindex/blob/v0.2.0/docs/usage.md) for async examples, supported filters and diagnostics, and the [changelog](https://github.com/PAIR-Systems-Inc/goodmem-llamaindex/blob/v0.2.0/CHANGELOG.md) for the changes from 0.1. Run `pip install -e '.[dev]'` and `pytest` for the test suite. Live tests are opt-in and clean up their own spaces.
+Every GoodMem ID you or a model pass in (space, memory, embedder, reranker or LLM) must be a UUID. Anything else raises `ValueError` before a request is sent, because the SDK puts IDs into URL paths, where a value such as `../spaces/<id>` would reach a different resource.
+
+See [usage and migration](https://github.com/PAIR-Systems-Inc/goodmem-llamaindex/blob/v0.2.1/docs/usage.md) for async examples, supported filters and diagnostics, and the [changelog](https://github.com/PAIR-Systems-Inc/goodmem-llamaindex/blob/v0.2.1/CHANGELOG.md) for the changes from 0.1. Run `pip install -e '.[dev]'`, then `pytest`, `ruff check llama_index tests` and `ruff format --check llama_index tests`, as CI does. Live tests are opt-in and clean up their own spaces.

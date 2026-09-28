@@ -11,6 +11,7 @@ from llama_index.core.schema import Document, MetadataMode
 from goodmem import AsyncGoodmem, Goodmem, MemoryCreationRequest
 
 from ._connection import Connection
+from ._ids import require_uuid
 from ._metadata import document_metadata
 
 
@@ -48,9 +49,11 @@ def _check_batch(results, batch, pending):
         )
 
 
-def _validate_wait(timeout, poll_interval):
+def _pending(memory_ids, timeout, poll_interval):
+    """Validate a wait before any request; IDs must be UUIDs, compared in lowercase."""
     if timeout < 0 or poll_interval <= 0:
         raise ValueError("timeout must be nonnegative and poll_interval must be positive")
+    return dict.fromkeys(require_uuid(m, "memory_ids") for m in memory_ids)
 
 
 def wait_for_memories(
@@ -60,15 +63,15 @@ def wait_for_memories(
 
     Args:
         client: Caller-owned synchronous SDK client.
-        memory_ids: Accepted memory IDs to await.
+        memory_ids: Accepted memory UUIDs to await.
         timeout: Total polling budget in seconds; HTTP timeout is configured separately.
         poll_interval: Delay between rounds of status requests.
 
     Returns:
         None once all requested memories have completed indexing.
     """
-    _validate_wait(timeout, poll_interval)
-    pending, deadline = dict.fromkeys(memory_ids), time.monotonic() + timeout
+    pending = _pending(memory_ids, timeout, poll_interval)
+    deadline = time.monotonic() + timeout
     first = True
     while pending:
         previous = list(pending)
@@ -90,8 +93,8 @@ async def await_memories(
     client: AsyncGoodmem, memory_ids: Iterable[str], timeout: float, *, poll_interval: float = 1
 ) -> None:
     """Native async counterpart of wait_for_memories, with the same total budget."""
-    _validate_wait(timeout, poll_interval)
-    pending, deadline = dict.fromkeys(memory_ids), time.monotonic() + timeout
+    pending = _pending(memory_ids, timeout, poll_interval)
+    deadline = time.monotonic() + timeout
     first = True
     while pending:
         previous = list(pending)
@@ -113,7 +116,7 @@ class GoodMemDocumentIngestor:
     """Batch Documents into a configured space using the official SDK.
 
     Args:
-        space_id: Target space; GoodMem owns its chunking and embeddings.
+        space_id: Target space UUID; GoodMem owns its chunking and embeddings.
         batch_size: Maximum Documents in one write request, from 1 to 100.
         connection: SDK clients or connection options accepted by Connection.
 
@@ -122,9 +125,10 @@ class GoodMemDocumentIngestor:
     """
 
     def __init__(self, *, space_id: str, batch_size: int = 100, **connection: Any) -> None:
-        if not space_id or not 1 <= batch_size <= 100:
-            raise ValueError("space_id is required and batch_size must be from 1 to 100")
-        self.space_id, self.batch_size = space_id, batch_size
+        if not 1 <= batch_size <= 100:
+            raise ValueError("batch_size must be from 1 to 100")
+        self.space_id = require_uuid(space_id, "space_id")
+        self.batch_size = batch_size
         self._connection = Connection(**connection)
 
     def _requests(self, documents):

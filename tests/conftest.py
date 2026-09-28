@@ -6,11 +6,19 @@ import httpx
 import pytest
 from goodmem import AsyncGoodmem, Goodmem
 
+# GoodMem IDs are UUIDs; the integration refuses anything else before a request.
+SPACE_ID = "5f0c8a52-3d2e-4f7a-9b1c-0a1b2c3d4e5f"
+SPACE_ID_2 = "6a1d9b63-4e3f-4a8b-8c2d-1b2c3d4e5f60"
+MEMORY_ID = "7b2eac74-5f40-4b9c-9d3e-2c3d4e5f6071"
+MEMORY_ID_2 = "8c3fbd85-6051-4cad-8e4f-3d4e5f607182"
+EMBEDDER_ID = "9d40ce96-7162-4dbe-9f50-4e5f60718293"
+RERANKER_ID = "ae51dfa7-8273-4ecf-8061-5f60718293a4"
+
 AUDIT = dict(createdAt=1, updatedAt=1, createdById="user", updatedById="user")
 MEMORY = dict(
     **AUDIT,
-    memoryId="memory-1",
-    spaceId="space-1",
+    memoryId=MEMORY_ID,
+    spaceId=SPACE_ID,
     contentType="text/plain",
     processingStatus="COMPLETED",
     pageImageStatus="COMPLETED",
@@ -26,7 +34,7 @@ CHUNK = {
             chunk=dict(
                 **AUDIT,
                 chunkId="chunk-1",
-                memoryId="memory-1",
+                memoryId=MEMORY_ID,
                 chunkSequenceNumber=0,
                 chunkText="Retrieved evidence",
                 vectorStatus="COMPLETED",
@@ -36,12 +44,12 @@ CHUNK = {
 }
 SPACE = dict(
     **AUDIT,
-    spaceId="space-1",
+    spaceId=SPACE_ID,
     name="Docs",
     ownerId="user",
     labels={},
     spaceEmbedders=[
-        dict(**AUDIT, spaceId="space-1", embedderId="embedder-1", defaultRetrievalWeight=1)
+        dict(**AUDIT, spaceId=SPACE_ID, embedderId=EMBEDDER_ID, defaultRetrievalWeight=1)
     ],
 )
 

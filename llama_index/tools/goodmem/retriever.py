@@ -19,6 +19,7 @@ from goodmem.models.retrieve_memory_event import RetrieveMemoryEvent
 from goodmem.models.space_key import SpaceKey
 
 from ._connection import Connection
+from ._ids import require_uuid
 from ._metadata import _DOCUMENT_METADATA, stored_metadata
 from .filters import filter_expression
 
@@ -175,10 +176,10 @@ class GoodMemRetriever(BaseRetriever):
     and their kind remain on the GoodMemNodeWithScore wrapper, outside node identity.
 
     Args:
-        space_ids: Application-configured spaces to search.
+        space_ids: Application-configured space UUIDs to search.
         top_k: Maximum returned chunks.
         fetch_k: Candidate count; defaults to four times top_k when reranking.
-        reranker_id: Optional server reranker. No LLM is needed.
+        reranker_id: Optional server reranker UUID. No LLM is needed.
         filters: LlamaIndex MetadataFilters for supported comparisons.
         filter: Explicit native GoodMem filter expression. Combined with filters.
         callback_manager: Standard LlamaIndex retrieval callbacks.
@@ -198,12 +199,14 @@ class GoodMemRetriever(BaseRetriever):
         **connection: Any,
     ) -> None:
         super().__init__(callback_manager=callback_manager)
-        if not space_ids or any(not s.strip() for s in space_ids):
-            raise ValueError("At least one nonempty space ID is required")
+        if not space_ids:
+            raise ValueError("At least one space ID is required")
         if top_k < 1 or (fetch_k is not None and fetch_k < top_k):
             raise ValueError("top_k must be positive and fetch_k must be at least top_k")
         self._connection = Connection(**connection)
-        self.space_ids = tuple(space_ids)
+        self.space_ids = tuple(require_uuid(s, f"space_ids[{i}]") for i, s in enumerate(space_ids))
+        if reranker_id is not None:
+            reranker_id = require_uuid(reranker_id, "reranker_id")
         self.top_k, self.fetch_k, self.reranker_id = top_k, fetch_k, reranker_id
         expressions = [e for e in (filter_expression(filters), filter) if e]
         self.filter = " AND ".join(f"({e})" for e in expressions) or None
