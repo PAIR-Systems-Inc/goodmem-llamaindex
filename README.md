@@ -3,7 +3,7 @@
 Use [GoodMem](https://goodmem.ai) as a persistent document and retrieval service in LlamaIndex. GoodMem handles chunking, embeddings and optional reranking; the integration returns native `NodeWithScore` objects for query engines and agents.
 
 ```bash
-pip install 'llamaindex-goodmem>=0.2.2'
+pip install 'goodmem-llamaindex>=0.2.3'
 ```
 
 The import namespace is `llama_index.tools.goodmem`. Set `GOODMEM_BASE_URL` to your server’s REST root and `GOODMEM_API_KEY` to its API key.
@@ -73,4 +73,4 @@ Retrieval does not raise on problems the server reports in its results; it retur
 
 Every GoodMem ID you or a model pass in (space, memory, embedder, reranker or LLM) must be a UUID. Anything else raises `ValueError` before a request is sent, because the SDK puts IDs into URL paths, where a value such as `../spaces/<id>` would reach a different resource.
 
-See [usage and migration](https://github.com/PAIR-Systems-Inc/goodmem-llamaindex/blob/v0.2.2/docs/usage.md) for async examples, supported filters and diagnostics, and the [changelog](https://github.com/PAIR-Systems-Inc/goodmem-llamaindex/blob/v0.2.2/CHANGELOG.md) for the changes from 0.1. Run `pip install -e '.[dev]'`, then `pytest`, `ruff check llama_index tests` and `ruff format --check llama_index tests`, as CI does. Live tests are opt-in and clean up their own spaces.
+See [usage and migration](https://github.com/PAIR-Systems-Inc/goodmem-llamaindex/blob/v0.2.3/docs/usage.md) for async examples, supported filters and diagnostics, and the [changelog](https://github.com/PAIR-Systems-Inc/goodmem-llamaindex/blob/v0.2.3/CHANGELOG.md) for the changes from 0.1. Run `pip install -e '.[dev]'`, then `pytest`, `ruff check llama_index tests` and `ruff format --check llama_index tests`, as CI does. Live tests are opt-in and clean up their own spaces.

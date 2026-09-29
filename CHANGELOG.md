@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.3 — 2026-09-29
+
+Renamed the distribution to `goodmem-llamaindex`, the goodmem-<framework> naming used by goodmem-adk and goodmem-semantic-kernel.
+
 ## 0.2.2 — 2026-09-28
 
 Retrieval fix: a failing reranker no longer costs the results the server returned.

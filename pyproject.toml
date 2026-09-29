@@ -3,8 +3,8 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "llamaindex-goodmem"
-version = "0.2.2"
+name = "goodmem-llamaindex"
+version = "0.2.3"
 description = "Native LlamaIndex retrieval, Document ingestion and agent tools for GoodMem."
 authors = [{name = "bashareid"}]
 requires-python = ">=3.10,<4.0"
