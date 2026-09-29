@@ -2,11 +2,7 @@
 
 ## 0.2.3 — 2026-09-29
 
-Distribution renamed: install `goodmem-llamaindex` instead of `llamaindex-goodmem`.
-
-- The PyPI distribution is now `goodmem-llamaindex`. It moved into the PAIR Systems PyPI organisation under the `goodmem-<framework>` naming used by goodmem-adk and goodmem-semantic-kernel. `llamaindex-goodmem` stays at 0.2.2.
-- Imports are unchanged: `from llama_index.tools.goodmem import ...` works as before. No code changes.
-- Both distributions ship the same `llama_index.tools.goodmem` files, so installing both makes them overwrite each other. Run `pip uninstall -y llamaindex-goodmem && pip install goodmem-llamaindex`.
+Renamed the distribution to `goodmem-llamaindex`, the goodmem-<framework> naming used by goodmem-adk and goodmem-semantic-kernel.
 
 ## 0.2.2 — 2026-09-28
 

@@ -6,12 +6,6 @@ Use [GoodMem](https://goodmem.ai) as a persistent document and retrieval service
 pip install 'goodmem-llamaindex>=0.2.3'
 ```
 
-This package was previously published as `llamaindex-goodmem` (last version on that name: 0.2.2). It moved into the PAIR Systems PyPI organisation under the `goodmem-<framework>` naming used by goodmem-adk and goodmem-semantic-kernel. The import name is unchanged. Both distributions ship the same `llama_index.tools.goodmem` files and would overwrite each other, so remove the old one first:
-
-```bash
-pip uninstall -y llamaindex-goodmem && pip install goodmem-llamaindex
-```
-
 The import namespace is `llama_index.tools.goodmem`. Set `GOODMEM_BASE_URL` to your server’s REST root and `GOODMEM_API_KEY` to its API key.
 
 ## Store and retrieve Documents
